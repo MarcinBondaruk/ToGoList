@@ -1,4 +1,4 @@
-module github.com/MarcinBondaruk/ToGoList
+module github.com/marcinbondaruk/ToGoList
 
 go 1.20
 
