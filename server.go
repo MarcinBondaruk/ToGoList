@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -22,32 +23,36 @@ type Todo struct {
 	Contents string `json:"contents"`
 }
 
-func saveJson(t map[string]Todo) {
+func saveToJsonFile(t map[string]Todo) error {
 	todos, err := json.Marshal(t)
+
 	if err != nil {
-		fmt.Println("Failed to serialize Todos: ", err)
+		return errors.New("error serializing todos: " + err.Error())
 	}
+
 	err = os.WriteFile("todos.json", todos, 0644)
+
 	if err != nil {
-		fmt.Println("Error writing to file: ", err)
+		return errors.New("error writing to file: " + err.Error())
 	}
+
+	return nil
 }
 
-func handleNewTodo(t map[string]Todo, w http.ResponseWriter, r *http.Request) {
+func createTodo(t map[string]Todo, w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 
 	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
 		return
 	}
 
 	var apiTodo ApiTodo
 	if err := json.Unmarshal(body, &apiTodo); err != nil {
-		http.Error(w, "Failed to parse JSON data", http.StatusBadRequest)
+		http.Error(w, "failed to parse JSON data", http.StatusBadRequest)
 		return
 	}
 
-	// utworzyc todo i dodac do mapy
 	newTodo := Todo{
 		Id:       uuid.NewString(),
 		Title:    apiTodo.Title,
@@ -56,7 +61,10 @@ func handleNewTodo(t map[string]Todo, w http.ResponseWriter, r *http.Request) {
 
 	t[newTodo.Id] = newTodo
 
-	saveJson(t)
+	if err = saveToJsonFile(t); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 - Internal Server Error"))
+	}
 
 	fmt.Printf("> Got request data: %T %+v\n", t, t)
 	w.WriteHeader(http.StatusOK)
@@ -65,6 +73,7 @@ func handleNewTodo(t map[string]Todo, w http.ResponseWriter, r *http.Request) {
 
 func getTodos(t map[string]Todo, w http.ResponseWriter, r *http.Request) {
 	jsonResponse, err := json.Marshal(t)
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -75,26 +84,27 @@ func getTodos(t map[string]Todo, w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonResponse)
 }
 
-func retrieveTodos() map[string]Todo {
+func reconstituteTodos() (map[string]Todo, error) {
 	todos := make(map[string]Todo)
 	data, err := os.ReadFile("todos.json")
+
 	if err != nil {
-		fmt.Println("Failed to read todos.json")
-		// return exception
+		return nil, errors.New("failed to read todos.json")
 	}
 
 	if err := json.Unmarshal(data, &todos); err != nil {
-		fmt.Println("Failed to unmarshal json data")
+		return nil, errors.New("failed to unmarshal json data")
 	}
-	return todos
+
+	return todos, nil
 }
 
 func main() {
-	todos := retrieveTodos()
+	todos, _ := reconstituteTodos()
 	http.HandleFunc("/todos", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
-			handleNewTodo(todos, w, r)
+			createTodo(todos, w, r)
 		case http.MethodGet:
 			getTodos(todos, w, r)
 		default:
