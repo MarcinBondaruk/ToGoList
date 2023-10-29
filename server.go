@@ -84,6 +84,20 @@ func getTodos(t map[string]Todo, w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonResponse)
 }
 
+func deleteTodos(t map[string]Todo, w http.ResponseWriter, r *http.Request) {
+	if err := os.Truncate("todos.json", 0); err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("404 - Not Found"))
+	}
+
+	for k := range t {
+		delete(t, k)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(nil)
+}
+
 func reconstituteTodos() (map[string]Todo, error) {
 	todos := make(map[string]Todo)
 	data, err := os.ReadFile("todos.json")
@@ -92,8 +106,10 @@ func reconstituteTodos() (map[string]Todo, error) {
 		return nil, errors.New("failed to read todos.json")
 	}
 
-	if err := json.Unmarshal(data, &todos); err != nil {
-		return nil, errors.New("failed to unmarshal json data")
+	if len(data) != 0 {
+		if err := json.Unmarshal(data, &todos); err != nil {
+			return nil, errors.New("failed to unmarshal json data")
+		}
 	}
 
 	return todos, nil
@@ -101,12 +117,15 @@ func reconstituteTodos() (map[string]Todo, error) {
 
 func main() {
 	todos, _ := reconstituteTodos()
+
 	http.HandleFunc("/todos", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
 			createTodo(todos, w, r)
 		case http.MethodGet:
 			getTodos(todos, w, r)
+		case http.MethodDelete:
+			deleteTodos(todos, w, r)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("404 - Not Found"))
